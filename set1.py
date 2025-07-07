@@ -13,11 +13,15 @@ int_to_b64 = {
 }
 
 character_frequencies = {
-    " ": 13, "E": 12.02, "T": 9.10, "A": 8.12, "O": 7.68, "I": 7.31, "N": 6.95, "S": 6.28, "R": 6.02, "H": 5.92,
+    "E": 12.02, "T": 9.10, "A": 8.12, "O": 7.68, "I": 7.31, "N": 6.95, "S": 6.28, "R": 6.02, "H": 5.92,
     "D": 4.32, "L": 3.98, "U": 2.88, "C": 2.71, "M": 2.61, "F": 2.30, "Y": 2.11, "W": 2.09, "G": 2.03,
     "P": 1.82, "B": 1.49, "V": 1.11, "K": 0.69, "X": 0.17, "Q": 0.11, "J": 0.10, "Z": 0.07
 }
 
+freq = " ETAOINSHRDLCUMWFGYPBVKJXQZ"
+
+def reverse_dict(d):
+    return {v: k for k, v in d.items()}
 
 def encode_n_bits(l_bytes: bytes, n: int) -> list:
     n_bit_sum = 0
@@ -49,60 +53,63 @@ def xor_buffers(buffer1, buffer2):
     return bytes([byte1 ^ byte2 for byte1, byte2 in zip(bytes1, bytes2)]).hex()
 
 def score_text(text):
+    occurances = get_character_occurances(text)
+
     score = 0
-    freq = {}
+    total_chars = len(text)
+    for char, n in occurances.items():
+        if char in character_frequencies:
+            expected_occurance = (character_frequencies[char] / 100) * total_chars
+            score += 1 - (abs(expected_occurance - n * total_chars) / expected_occurance)
+        elif ord(char) < 32 or ord(char) > 126:
+            score += n / total_chars
+
+    return score 
+
+def get_character_occurances(text):
+    occurances = {}
     for char in text:
-        if char in freq:
-            freq[char] += 1
+        if char in occurances:
+            occurances[char] += 1
         else:
-            freq[char] = 1
-    for key in freq:
-        freq[key] = freq[key] / len(text) * 100
-    
-    for key in freq:
-        try:
-            if key.upper() in character_frequencies:
-                score += abs(character_frequencies[key.upper()] - freq[key])
-            # Account for non-letter characters, and penalize them greater if they aren't 
-            # punctuation or whitespace or stuff
-            elif ord(key) < 32 or ord(key) > 126:
-                score += 150
-            else:
-                score += 50
-        except TypeError:
-            score += 100000
-    return score
+            occurances[char] = 1
+    return occurances
 
 def xor_single_byte(byte_list, byte):
     return bytes([byte2 ^ byte for byte2 in byte_list])
 
-def highest_scoring_decryption(byte_list):
+def best_decryption(byte_list):
     decoded = [xor_single_byte(byte_list, i).decode(errors="ignore") for i in range(128)]
-    least_error = min(decoded, key=lambda x: score_text(x))
-    return least_error
+    return max(decoded, key=lambda x: score_text(x))
+
+def get_key_for_best_decryption(byte_list):
+    scores_key = [(score_text(xor_single_byte(byte_list, key).decode()), key) for key in range(128)]
+    return max(scores_key, key=lambda x: x[0])[1]
 
 def print_all_decryptions_with_score(byte_list):
-    decoded = [xor_single_byte(byte_list, i).decode(errors="ignore") for i in range(128)]
+    decoded = [xor_single_byte(byte_list, i).decode() for i in range(128)]
     for dec in sorted(decoded, key=lambda x: score_text(x), reverse=True):
         print(dec, score_text(dec))
 
 def find_single_bit_encrypted_string():
     with open("4.txt", "r") as f:
         lines = f.readlines()
-    return [highest_scoring_decryption(line.rstrip()) for line in lines]
+    return [best_decryption(bytes.fromhex(line.rstrip())) for line in lines]
 
 def repeating_key_encrypt(key, message, encoding):
     i = 0
     out_bytes = []
-    message_bytes = bytes(message, encoding)
-    # print(i, len(message))
+    if type(message) is not bytes:
+        message_bytes = bytes(message, encoding)
+    else:
+        message_bytes = message
     while i < len(message):
         for byte in bytes(key, encoding):
             if i >= len(message):
                 break
             out_bytes.append(byte ^ message_bytes[i])
             i += 1
-    return bytes(out_bytes).hex()
+    return bytes(out_bytes)
 
 def hamming_distance(string1, string2):
     dist = 0
@@ -143,39 +150,19 @@ def transpose_blocks(byte_list, key_size):
         i += 1
     return transposed_blocks
 
-def decrypt_repeating_key(string):
-    p_keys = probable_keys(string, 10)
+def decrypt_repeating_key(byte_list):
+    string = byte_list.decode()
+    p_keys = probable_keys(string, 5)
     keys = []
     for p_key, _ in p_keys:
         blocks = transpose_blocks(bytes(string, "utf-8"), p_key)
         block_keys = []
         for block in blocks:
-            block_keys.append(highest_scoring_decryption(block))
+            block_keys.append(chr(get_key_for_best_decryption(block)))
         keys.append("".join(block_keys))
     return keys
     
 if __name__ == '__main__':
-    # print(hex_to_b64("49276d206b696c6c696e6720796f757220627261696e206c696b65206120706f69736f6e6f7573206d757368726f6f6d"))
-    # print(xor_buffers("1c0111001f010100061a024b53535009181c", "686974207468652062756c6c277320657965"))
-    # print(highest_scoring_decryption("1b37373331363f78151b7f2b783431333d78397828372d363c78373e783a393b3736"))
-    # print(print_all_decryptions_with_score("7b5a4215415d544115415d5015455447414c155c46155f4058455c5b523f"))
-    # results = find_single_bit_encrypted_string()
-    # for result in sorted(results, key=lambda x: x[0][1], reverse=True):
-    #     print(result)
-    # print('\n'.join(find_single_bit_encrypted_string()))
-    s = "Despite the expensive reconstructions, both vessels were considered obsolescent by the eve of World War II, and neither saw significant action in the early years of the war. In 1944 both underwent upgrades to their anti-aircraft suite before transferring to Singapore. Fuso and Yamashiro were the only two Japanese battleships at the Battle of Surigao Strait, the southernmost action of the Battle of Leyte Gulf, and both were lost in the early hours of 25 October 1944 to torpedoes and naval gunfire."
-    encrypted = repeating_key_encrypt("8o7werionwdvp983-89", s, "utf-8")
-
-
-    # print(encrypted)
-    encrypted_string = bytes.fromhex(encrypted).decode("utf-8")
-    # print(encrypted_string)
-    # print(probable_keys(encrypted_string, 5))
-
-    print(print_all_decryptions_with_score(bytes(encrypted, "utf-8")))
-    # for key in decrypt_repeating_key(encrypted_string):
-    #     print(key)
-    # print(decrypt_repeating_key(encrypted_string))
-    # with open("6.txt", "r") as file:
-    #     b64 = file.read()
-    #     print(highest_scoring_decryption(base64.b64decode(b64)))
+    results = find_single_bit_encrypted_string()
+    for result in sorted(results, key=lambda x: x[0][1], reverse=True):
+        print(result)

@@ -27,11 +27,11 @@ def test_probable_keys():
     message_length = 20
     n_random_strings = range(10)
     correct = 0
-    message = randbytes(message_length).decode("utf-8")
+    message = randbytes(message_length).decode("utf-8", errors="ignore")
     for key_length in tqdm(key_lengths):
         key = randbytes(key_length).decode("utf-8", errors="ignore")
         encrypted_string = set1.repeating_key_encrypt(key, message, "utf-8")
-        p_keys = [p_key for p_key, _ in set1.probable_keys(encrypted_string, 10)]
+        p_keys = [p_key for p_key, _ in set1.probable_keys(encrypted_string.decode("utf-8", errors="ignore"), 10)]
         if key_length in p_keys:
             correct += 1
     frac_correct = correct / (len(key_lengths) * 40 * len(n_random_strings))
